@@ -1,7 +1,10 @@
 javascript: (function () {
 
+var domMap = {}; /* 생성한 DOM 객체 맵. 성능 개선을 위한 멤버임 */
+
 function isundef(o) { return o === null || typeof o === 'undefined'; }
 function _$(selector) { return document.querySelector(selector); }
+function _g(tag, id) { var o = document.createElement(tag); if( id ) { o.id = id; domMap[id] = o; } return o; }
 
 /* 비디오 DOM 객체 가져오기. 디즈니에 종속적임 */
 function getVideoBox() { return _$('video'); }
@@ -21,26 +24,27 @@ var iconMap = {
   'close': '<svg width="16" height="16" fill="black" viewBox="0 0 16 16"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>'
 };
 
+var period = 0.2; /* 배치 잡 주기 (in sec) */
+var adjTime = period / 4; /* 스크립트 시간 보정치 */
 var styleCenter = 'display: flex; align-items: center;';
 
 var boxKey = 'vrepeater-dp'; /* 툴 박스 div의 ID */
-var repeatOptions = [-1, 1, 2, 3, 4, 5, 10, 15, 20, 30, 50, 99]; /* 반복 회수 옵션 */
+var repeatOptions = [1, 2, 3, 4, 5, 10, 15, 20, 30, 50, 100]; /* 반복 회수 옵션 */
 
 var v = getVideoBox();
 var vUrl = window.location.href;
 var isOK = true; /* vUrl.indexOf("disneyplus.com") >= 0 && !isundef(v); */
 
-var curIdx = -1; /* 현재 재생 중인 자막 번호 */
+var curIdx = 0; /* 현재 재생 중인 자막 번호 */
+var repeatCount = 1; /* 반복 회수 */
 var repeatLimit = 10; /* 최대 반복 회수. -1이면 계속 반복 */
 var optGoing = true; /* 한 자막 재생이 끝나면 다음 것을 넘어 갈지 여부 */
 var hidingBox = null; /* 자막 가리게 */
-var playing = !v.paused; /* Playing 여부 */
+var playing = v && !v.paused; /* Playing 여부 */
 
 var scriptInfo = []; /* 추출 중인 스크립트 저장 멤버. start(in ms), end, script */
 var checker = null; /* 배치 잡을 위한 Timer ID */
 var currentScript = ''; /* 스크립트 변경 여부 확인을 위한 최신 값 유지 멤버 */
-
-var domMap = {}; /* 생성한 DOM 객체 맵. 성능 개선을 위한 멤버임 */
 
 
 function setHTML(id, html) {
@@ -49,12 +53,12 @@ function setHTML(id, html) {
 }
 
 function handleCounterChanged(ev) {
-  console.log('Counter Changed to', ev.target.value);
+  repeatLimit = Number(ev.target.value);
 }
 
 function handleClick(type) {
   if( 'play' === type ) {
-    return function(ev) {
+    return (ev) => {
       if( isundef(v) ) {
         return;
       }
@@ -68,7 +72,7 @@ function handleClick(type) {
       }
     };
   } else if( 'close' === type ) {
-    return function(ev) {
+    return (ev) => {
       if( checker ) {
         clearInterval(checker);
         checker = null;
@@ -85,13 +89,13 @@ function handleClick(type) {
       }
     };
   } else if( 'show' === type ) {
-    return function (ev) {
+    return (ev) => {
       if( !isundef(hidingBox) ) {
         hidingBox.remove();
         hidingBox = null;
         setHTML('vrepeater-button-show', iconMap['hide']);
       } else {
-        hidingBox = document.createElement('div');
+        hidingBox = _g('div');
         hidingBox.style = 'position: fixed; z-index: 9999; background-color: rgba(0, 0, 0, 0.98);';
         hidingBox.innerHTML = '&nbsp;';
 
@@ -102,15 +106,32 @@ function handleClick(type) {
       }
     };
   } else if( 'step' === type ) {
-    return function (ev) {
+    return (ev) => {
       optGoing = !optGoing;
       setHTML('vrepeater-button-step', getIconHtml('step'));
     };
+  } else if( 'prev' === type ) {
+    return (ev) => { jumpTo(curIdx - 1); };
+  } else if( 'next' === type ) {
+    return (ev) => { jumpTo(curIdx + 1); };
   } else {
     return function (ev) {
       console.log('handleClick:', type, ev);
     };
   }
+}
+
+function jumpTo(idx) {
+  if( idx < 0 || idx >= scriptInfo.length ) {
+    return;
+  }
+
+  curIdx = idx;
+  repeatCount = 1;
+  v.currentTime = scriptInfo[curIdx].start;
+  if( v.paused ) { v.play(); }
+
+  console.log('jumpTo', curIdx, v.currentTime);
 }
 
 function getIconHtml(btype) {
@@ -126,10 +147,7 @@ function getIconHtml(btype) {
 }
 
 function createButton(btype) {
-  var elem = document.createElement('button');
-
-  elem.id = 'vrepeater-button-' + btype;
-  domMap[elem.id] = elem;
+  var elem = _g('button', 'vrepeater-button-' + btype);
 
   elem.style = 'width: 32px; height: 32px; margin: 0 2px; ' + styleCenter;
   setHTML(elem.id, getIconHtml(btype));
@@ -156,10 +174,11 @@ function pushScript(text, time) {
   } else if( !isundef(text) && currentScript !== text ) {
     currentScript = text;
     if( isNewLine(text) ) {
+      time -= adjTime;
       if( ll > 0 && isundef(scriptInfo[ll - 1].end) ) {
-        scriptInfo[ll - 1].end = time - 0.05;
+        scriptInfo[ll - 1].end = time;
       }
-      scriptInfo.push({ script:text, start:(time - 0.05) });
+      scriptInfo.push({ script:text, start:time });
     } else if( ll > 0 ) {
       scriptInfo[ll - 1].script = '\n' + text;
     }
@@ -188,18 +207,43 @@ function adjustHiderPos(s) {
 }
 
 function batch() {
-  if( !v ) {
-    return;
-  }
+  if( !v ) { return; }
 
   if( playing !== !v.paused ) {
     playing = !v.paused;
     setHTML('vrepeater-button-play', getIconHtml('play'));
   }
 
+  if( !playing ) { return; }
+
+  var sLen = scriptInfo.length;
+
+  /* 현재 스크립트 (curIdx) 완료 여부. */
+  if( curIdx < sLen && v.currentTime >= scriptInfo[curIdx].end  ) {
+    repeatCount += 1;
+    if( repeatCount > repeatLimit ) { /* 지정한 반복 회수 도달 */
+      repeatCount = 1;
+      if( optGoing ) { /* 다음 스크립트 */
+        curIdx += 1;
+      } else { /* 일단 멈춤 */
+        v.pause();
+        playing = false;
+        setHTML('vrepeater-button-play', getIconHtml('play'));
+      }
+    } else {
+      /* 현재 스크립트 반복 */
+      v.currentTime = scriptInfo[curIdx].start;
+    }
+    setHTML(boxKey + '-counter', '' + repeatCount);
+  }
+
+  setHTML(boxKey + '-line2', 'Script: ' + (sLen === 0 ? '-' : (curIdx + 1) + ' / ' + Math.max(curIdx + 1, sLen)) );
+
   s = getScriptBox();
   if( s ) {
-    pushScript(s.innerText, v.currentTime);
+    if( sLen === 0 || v.currentTime > scriptInfo[sLen - 1].start ) {
+      pushScript(s.innerText, v.currentTime);
+    }
     adjustHiderPos(s);
   } else {
     pushScript(null, v.currentTime);
@@ -212,35 +256,29 @@ function main() {
   if( isundef(mainBox) ) {
     console.log('create main box for video-repeater');
 
-    mainBox = document.createElement('div');
-    mainBox.id = boxKey;
+    mainBox = _g('div', boxKey);
     mainBox.style = 'position: fixed; z-index: 9999; top: 0px; right:0px; padding: 2px 4px;'
       + 'background-color: lightgray; border: 1px solid gray; border-radius: 0 0 4px 4px;'
       + 'display: flex; flex-direction: column; flex-wrap: nowrap; justify-content: space-evenly;';
 
-    var line1 = document.createElement('div');
-
-    line1.id = boxKey + '-line1';
+    var line1 = _g('div', boxKey + '-line1');
     line1.style = styleCenter;
 
-    var counterDiv = document.createElement('div');
+    var counterDiv = _g('div', boxKey + '-counter');
     counterDiv.style = 'display: inline-block; width: 20px; font-size: 0.9rem; text-align: center;';
-    counterDiv.id = boxKey + '-counter';
-    counterDiv.innerHTML = '0';
+    counterDiv.innerHTML = '' + repeatCount;
     line1.appendChild(counterDiv);
 
-    var sepDiv = document.createElement('div');
+    var sepDiv = _g('div', boxKey + '-sep');
     sepDiv.style = 'display: inline-block; text-align: center;';
-    sepDiv.id = boxKey + '-sep';
     sepDiv.innerHTML = '&nbsp;/&nbsp;';
     line1.appendChild(sepDiv);
 
-    var countSelector = document.createElement('select');
-    countSelector.id = boxKey + '-selector';
+    var countSelector = _g('select', boxKey + '-selector');
     countSelector.style = 'width: 50px; height: 24px; font-size: 0.9rem';
 
     repeatOptions.map(n => {
-      var elem = document.createElement('option');
+      var elem = _g('option');
       elem.value = n;
       if( n === repeatLimit ) {
         elem.selected = true;
@@ -258,8 +296,7 @@ function main() {
       return k;
     });
 
-    var line2 = document.createElement('div');
-    line2.id = boxKey + '-line2';
+    var line2 = _g('div', boxKey + '-line2');
     line2.style = 'height: 36px; padding: 0 4px;' + styleCenter;
     line2.innerHTML = 'line #2';
 
@@ -272,7 +309,7 @@ function main() {
   }
 
   if( isundef(checker) ) {
-    checker = setInterval(batch, 200);
+    checker = setInterval(batch, period * 1000);
   }
 }
 
