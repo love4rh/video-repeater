@@ -28,6 +28,7 @@ var boxKey = 'vrepeater-dp'; /* 툴 박스 div의 ID */
 var v = getVideoBox();
 var vUrl = window.location.href;
 var isOK = vUrl.indexOf("disneyplus.com") >= 0 && !isundef(v);
+var movieID = getMovieID();
 
 var playing = v && !v.paused; /* Playing 여부 */
 
@@ -76,11 +77,11 @@ function handleClick(type) {
   } else if( 'step' === type ) {
     return (ev) => {
       optGoing = !optGoing;
+      console.log('movie id:', getMovieID());
       setHTML('vrepeater-button-step', getIconHtml('step'));
     };
   } else {
     return function (ev) {
-      console.log('movie id:', getMovieID());
       console.log('handleClick:', type, ev);
     };
   }
@@ -116,13 +117,59 @@ function isNewLine(text) {
   return /[A-Z]/.test( text[0] ) || text[0] === '"' || text[0] === "'" || text[0] === '♪';
 }
 
+/* si: script, start, end */
+function sendScript(idx, si) {
+  const host = 'https://gx.tool4.us/pushScript'; /* http://127.0.0.1:9090/pushText */
+  const xhr = new window.XMLHttpRequest();
+
+  xhr.onload = function () {
+    if ( xhr.status === 200 || xhr.status === 201 ) {
+      /* success: xhr.responseText */
+    } else {
+      /* error: xhr.responseText, xhr.status*/
+    }
+
+    if ( xhr.readyState === 4 ) {
+      /* complete(); */
+    }
+  };
+
+  xhr.withCredentials = false;
+  xhr.open('POST', host, true);
+
+  xhr.timeout = 24000;
+
+  var data = {
+    index: idx,
+    movieID,
+    start: si.start,
+    end: si.end,
+    text: si.script
+  };
+
+  xhr.setRequestHeader('Content-type', 'application/json');
+  xhr.send(JSON.stringify(data));
+}
+
 function pushScript(text, time) {
   const ll = scriptInfo.length;
 
-  if( isundef(text) && ll > 0 ) {
+  if( text !== null ) {
+    if( text.startsWith('\n') ) {
+      text = text.substring(1);
+    }
+
+    if( text.startsWith('(') ) { /* 동작 */
+      text = null;
+    } else {
+      text = text.replaceAll('\n', ' ');
+    }
+  }
+
+  if( text === null && ll > 0 ) {
     if( isundef(scriptInfo[ll - 1].end) ) {
       scriptInfo[ll - 1].end = time;
-      console.log(ll + ':', JSON.stringify(scriptInfo[ll - 1]));
+      sendScript(ll, scriptInfo[ll - 1]);
     }
   } else if( !isundef(text) && currentScript !== text ) {
     currentScript = text;
@@ -130,11 +177,12 @@ function pushScript(text, time) {
       time -= adjTime;
       if( ll > 0 && isundef(scriptInfo[ll - 1].end) ) {
         scriptInfo[ll - 1].end = time;
-        console.log(ll + ':', JSON.stringify(scriptInfo[ll - 1]));
+        sendScript(ll, scriptInfo[ll - 1]);
       }
       scriptInfo.push({ script:text, start:time });
     } else if( ll > 0 ) {
-      scriptInfo[ll - 1].script = '\n' + text;
+      scriptInfo[ll - 1].script += (' ' + text);
+      sendScript(ll, scriptInfo[ll - 1]);
     }
   }
 }

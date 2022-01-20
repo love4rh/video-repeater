@@ -37,10 +37,11 @@ var isOK = true; /* vUrl.indexOf("disneyplus.com") >= 0 && !isundef(v); */
 
 var curIdx = 0; /* 현재 재생 중인 자막 번호 */
 var repeatCount = 1; /* 반복 회수 */
-var repeatLimit = 10; /* 최대 반복 회수. -1이면 계속 반복 */
+var repeatLimit = 3; /* 최대 반복 회수. repeatOptions에 정의된 값 중 하나 선택 */
 var optGoing = true; /* 한 자막 재생이 끝나면 다음 것을 넘어 갈지 여부 */
 var hidingBox = null; /* 자막 가리게 */
 var playing = v && !v.paused; /* Playing 여부 */
+var holding = false;
 
 var scriptInfo = []; /* 추출 중인 스크립트 저장 멤버. start(in ms), end, script */
 var checker = null; /* 배치 잡을 위한 Timer ID */
@@ -54,6 +55,22 @@ function setHTML(id, html) {
 
 function handleCounterChanged(ev) {
   repeatLimit = Number(ev.target.value);
+}
+
+function jumpTo(idx, reset) {
+  if( idx < 0 || idx >= scriptInfo.length ) {
+    return;
+  }
+
+  holding = true;
+  curIdx = idx;
+
+  if( reset ) { repeatCount = 1; }
+
+  v.pause();
+
+  setTimeout(() => { v.currentTime = scriptInfo[curIdx].start; }, 80);
+  setTimeout(() => { holding = false; v.play(); }, 200);
 }
 
 function handleClick(type) {
@@ -112,27 +129,14 @@ function handleClick(type) {
       setHTML('vrepeater-button-step', getIconHtml('step'));
     };
   } else if( 'prev' === type ) {
-    return (ev) => { jumpTo(curIdx - 1); };
+    return (ev) => { jumpTo(curIdx - 1, true); };
   } else if( 'next' === type ) {
-    return (ev) => { jumpTo(curIdx + 1); };
+    return (ev) => { jumpTo(curIdx + 1, true); };
   } else {
     return function (ev) {
       console.log('handleClick:', type, ev);
     };
   }
-}
-
-function jumpTo(idx) {
-  if( idx < 0 || idx >= scriptInfo.length ) {
-    return;
-  }
-
-  curIdx = idx;
-  repeatCount = 1;
-  v.currentTime = scriptInfo[curIdx].start;
-  if( v.paused ) { v.play(); }
-
-  console.log('jumpTo', curIdx, v.currentTime);
 }
 
 function getIconHtml(btype) {
@@ -169,10 +173,22 @@ function isNewLine(text) {
 
 function pushScript(text, time) {
   const ll = scriptInfo.length;
+  if( text !== null ) {
+    if( text.startsWith('\n') ) {
+      text = text.substring(1);
+    }
 
-  if( isundef(text) && ll > 0 ) {
+    if( text.startsWith('(') ) { /* 동작 */
+      text = null;
+    } else {
+      text = text.replaceAll('\n', ' ');
+    }
+  }
+
+  if( text === null && ll > 0 ) {
     if( isundef(scriptInfo[ll - 1].end) ) {
       scriptInfo[ll - 1].end = time;
+      console.log('script', ll, scriptInfo[ll - 1]);
     }
   } else if( !isundef(text) && currentScript !== text ) {
     currentScript = text;
@@ -180,10 +196,11 @@ function pushScript(text, time) {
       time -= adjTime;
       if( ll > 0 && isundef(scriptInfo[ll - 1].end) ) {
         scriptInfo[ll - 1].end = time;
+        console.log('script', ll, scriptInfo[ll - 1]);
       }
       scriptInfo.push({ script:text, start:time });
     } else if( ll > 0 ) {
-      scriptInfo[ll - 1].script = '\n' + text;
+      scriptInfo[ll - 1].script += (' ' + text);
     }
   }
 }
@@ -210,7 +227,7 @@ function adjustHiderPos(s) {
 }
 
 function batch() {
-  if( !v ) { return; }
+  if( !v || holding ) { return; }
 
   if( playing !== !v.paused ) {
     playing = !v.paused;
@@ -222,7 +239,7 @@ function batch() {
   var sLen = scriptInfo.length;
 
   /* 현재 스크립트 (curIdx) 완료 여부. */
-  if( curIdx < sLen && v.currentTime >= scriptInfo[curIdx].end  ) {
+  if( curIdx < sLen && v.currentTime > scriptInfo[curIdx].end  ) {
     repeatCount += 1;
     if( repeatCount > repeatLimit ) { /* 지정한 반복 회수 도달 */
       repeatCount = 1;
@@ -235,21 +252,23 @@ function batch() {
       }
     } else {
       /* 현재 스크립트 반복 */
-      v.currentTime = scriptInfo[curIdx].start;
+      jumpTo(curIdx, false);
     }
     setHTML(boxKey + '-counter', '' + repeatCount);
   }
 
   setHTML(boxKey + '-line2', 'Script: ' + (sLen === 0 ? '-' : (curIdx + 1) + ' / ' + Math.max(curIdx + 1, sLen)) );
 
-  s = getScriptBox();
-  if( s ) {
-    if( sLen === 0 || v.currentTime > scriptInfo[sLen - 1].start ) {
-      pushScript(s.innerText.trim(), v.currentTime);
+  if( repeatCount === 1) {
+    s = getScriptBox();
+    if( s ) {
+      if( sLen === 0 || v.currentTime > scriptInfo[sLen - 1].start ) {
+        pushScript(s.innerText, v.currentTime);
+      }
+      adjustHiderPos(s);
+    } else {
+      pushScript(null, v.currentTime);
     }
-    adjustHiderPos(s);
-  } else {
-    pushScript(null, v.currentTime);
   }
 }
 
