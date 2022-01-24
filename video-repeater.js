@@ -1,5 +1,6 @@
 javascript: (function () {
 
+var alwaysNew = false; /* true: 바뀐 자막은 항상 새로운 자막으로 간주 */
 var domMap = {}; /* 생성한 DOM 객체 맵. 성능 개선을 위한 멤버임 */
 
 function isundef(o) { return o === null || typeof o === 'undefined'; }
@@ -17,8 +18,6 @@ var iconMap = {
   'pause': '<svg width="16" height="16" fill="black" viewBox="0 0 16 16"><path d="M6 3.5a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm4 0a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5z"/></svg>',
   'show':  '<svg width="16" height="16" fill="black" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg>',
   'hide':  '<svg width="16" height="16" fill="black" viewBox="0 0 16 16"><path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7.028 7.028 0 0 0-2.79.588l.77.771A5.944 5.944 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486l.708.709z"/><path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829l.822.822zm-2.943 1.299.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829z"/><path d="M3.35 5.47c-.18.16-.353.322-.518.487A13.134 13.134 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7.029 7.029 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238l.708.709zm10.296 8.884-12-12 .708-.708 12 12-.708.708z"/></svg>',
-  'step':  '<svg width="16" height="16" fill="black" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M4.146 3.646a.5.5 0 0 0 0 .708L7.793 8l-3.647 3.646a.5.5 0 0 0 .708.708l4-4a.5.5 0 0 0 0-.708l-4-4a.5.5 0 0 0-.708 0zM11.5 1a.5.5 0 0 1 .5.5v13a.5.5 0 0 1-1 0v-13a.5.5 0 0 1 .5-.5z"/></svg>',
-  'going': '<svg width="16" height="16" fill="black" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M3.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L9.293 8 3.646 2.354a.5.5 0 0 1 0-.708z"/><path fill-rule="evenodd" d="M7.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L13.293 8 7.646 2.354a.5.5 0 0 1 0-.708z"/></svg>',
   'prev':  '<svg width="16" height="16" fill="black" viewBox="0 0 16 16"><path d="M.5 3.5A.5.5 0 0 0 0 4v8a.5.5 0 0 0 1 0V8.753l6.267 3.636c.54.313 1.233-.066 1.233-.697v-2.94l6.267 3.636c.54.314 1.233-.065 1.233-.696V4.308c0-.63-.693-1.01-1.233-.696L8.5 7.248v-2.94c0-.63-.692-1.01-1.233-.696L1 7.248V4a.5.5 0 0 0-.5-.5z"/></svg>',
   'next':  '<svg width="16" height="16" fill="black" viewBox="0 0 16 16"><path d="M15.5 3.5a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-1 0V8.753l-6.267 3.636c-.54.313-1.233-.066-1.233-.697v-2.94l-6.267 3.636C.693 12.703 0 12.324 0 11.693V4.308c0-.63.693-1.01 1.233-.696L7.5 7.248v-2.94c0-.63.693-1.01 1.233-.696L15 7.248V4a.5.5 0 0 1 .5-.5z"/></svg>',
   'close': '<svg width="16" height="16" fill="black" viewBox="0 0 16 16"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>'
@@ -29,24 +28,25 @@ var adjTime = period / 2; /* 스크립트 시간 보정치 */
 var styleCenter = 'display: flex; align-items: center;';
 
 var boxKey = 'vrepeater-dp'; /* 툴 박스 div의 ID */
-var repeatOptions = [1, 2, 3, 4, 5, 10, 15, 20, 30, 50, 100]; /* 반복 회수 옵션 */
+var repeatOptions = [1, 2, 3, 5, 10, 15, 20, 30, 50, 100]; /* 반복 회수 옵션 */
 
 var v = getVideoBox();
+var b10Button = _$(".rwd-10sec-icon");
+var clkEvent = new MouseEvent('click', { view: window, bubbles: true, cancelable: true });
 var vUrl = window.location.href;
 var isOK = true; /* vUrl.indexOf("disneyplus.com") >= 0 && !isundef(v); */
 
 var curIdx = 0; /* 현재 재생 중인 자막 번호 */
 var repeatCount = 1; /* 반복 회수 */
 var repeatLimit = 3; /* 최대 반복 회수. repeatOptions에 정의된 값 중 하나 선택 */
-var optGoing = true; /* 한 자막 재생이 끝나면 다음 것을 넘어 갈지 여부 */
 var hidingBox = null; /* 자막 가리게 */
 var playing = v && !v.paused; /* Playing 여부 */
 var holding = false;
 
-var scriptInfo = []; /* 추출 중인 스크립트 저장 멤버. start(in ms), end, script */
+var scriptInfo = null; /* 추출 중인 스크립트 저장 멤버. start(in ms), end, script */
+var incomingItem = null;
 var checker = null; /* 배치 잡을 위한 Timer ID */
 var currentScript = ''; /* 스크립트 변경 여부 확인을 위한 최신 값 유지 멤버 */
-
 
 function setHTML(id, html) {
   if( !(id in domMap) ) { return; }
@@ -57,20 +57,33 @@ function handleCounterChanged(ev) {
   repeatLimit = Number(ev.target.value);
 }
 
-function jumpTo(idx, reset) {
-  if( idx < 0 || idx >= scriptInfo.length ) {
+function jumpTo(reset) {
+  if( scriptInfo === null ) {
     return;
   }
 
   holding = true;
-  curIdx = idx;
-
   if( reset ) { repeatCount = 1; }
 
   v.pause();
 
-  setTimeout(() => { v.currentTime = scriptInfo[curIdx].start; }, 80);
-  setTimeout(() => { holding = false; v.play(); }, 200);
+  var sTime = scriptInfo.start;
+
+  /* 시간차가 많은 경우 임의로 currentTime을 변경하면 stalled될 수 있어 10초 뒤로 버튼을 이용함 */
+  if( v.currentTime - sTime < 1.5 ) { /* 적정한 수치는 고려 필요 */
+    b10Button.dispatchEvent(clkEvent);
+    setTimeout(() => { v.currentTime = sTime; holding = false; v.play(); }, 1200);
+  } else {
+    setTimeout(() => { v.currentTime = sTime; }, 200);
+    setTimeout(() => { holding = false; v.play(); }, 400);
+  }  
+}
+
+function plyaTo(offset) {
+  if( v ) {
+    v.currentTime += offset;
+    scriptInfo = null;
+  }
 }
 
 function handleClick(type) {
@@ -123,15 +136,10 @@ function handleClick(type) {
       }
       console.log('script', scriptInfo);
     };
-  } else if( 'step' === type ) {
-    return (ev) => {
-      optGoing = !optGoing;
-      setHTML('vrepeater-button-step', getIconHtml('step'));
-    };
   } else if( 'prev' === type ) {
-    return (ev) => { jumpTo(curIdx - 1, true); };
+    return (ev) => { plyaTo(-5); };
   } else if( 'next' === type ) {
-    return (ev) => { jumpTo(curIdx + 1, true); };
+    return (ev) => { plyaTo(5); };
   } else {
     return function (ev) {
       console.log('handleClick:', type, ev);
@@ -144,8 +152,6 @@ function getIconHtml(btype) {
     return playing ? iconMap['pause'] : iconMap['play'];
   } else if( 'show' === btype ) {
     return isundef(hidingBox) ? iconMap['hide'] : iconMap['show'];
-  } else if( 'step' === btype ) {
-    return optGoing ? iconMap['step'] : iconMap['going'];
   }
 
   return iconMap[btype];
@@ -168,40 +174,58 @@ function getMovieID() {
 }
 
 function isNewLine(text) {
-  return /[A-Z]/.test( text[0] ) || text[0] === '"' || text[0] === "'" || text[0] === '♪';
+  return alwaysNew || /[A-Z]/.test( text[0] ) || text[0] === '"' || text[0] === "'" || text[0] === '♪' || text[0] === '-';
+}
+
+function isValid(si) {
+  return si && si.text && si.text !== '';
 }
 
 function pushScript(text, time) {
-  const ll = scriptInfo.length;
-  if( text !== null ) {
-    if( text.startsWith('\n') ) {
-      text = text.substring(1);
-    }
+  var cTime = (new Date()).getTime();
 
-    if( text.startsWith('(') ) { /* 동작 */
-      text = null;
-    } else {
-      text = text.replaceAll('\n', ' ');
+  if( text === null ) {
+    if( isValid(scriptInfo) && (cTime - scriptInfo.cTime) > 800 ) {
+      scriptInfo.end = time - adjTime;
+      incomingItem = { cTime, index: (scriptInfo.index + 1), text: '', start: time };
     }
+    return;
   }
 
-  if( text === null && ll > 0 ) {
-    if( isundef(scriptInfo[ll - 1].end) ) {
-      scriptInfo[ll - 1].end = time;
-      console.log('script', ll, scriptInfo[ll - 1]);
+  if( text.startsWith('\n') ) {
+    text = text.substring(1);
+  }
+
+  if( text.startsWith('(') ) {
+    /* 동작 --> 마지막 시간 기록 */
+    if( isValid(scriptInfo) ) {
+      scriptInfo.end = time - adjTime;
+      incomingItem = { cTime, index: (scriptInfo.index + 1), text: '', start: time };
     }
-  } else if( !isundef(text) && currentScript !== text ) {
-    currentScript = text;
-    if( isNewLine(text) ) {
-      time -= adjTime;
-      if( ll > 0 && isundef(scriptInfo[ll - 1].end) ) {
-        scriptInfo[ll - 1].end = time;
-        console.log('script', ll, scriptInfo[ll - 1]);
-      }
-      scriptInfo.push({ script:text, start:time });
-    } else if( ll > 0 ) {
-      scriptInfo[ll - 1].script += (' ' + text);
+    currentScript = '';
+    return;
+  }
+
+  if( currentScript === text ) {
+    return;
+  }
+
+  var sOn = scriptInfo !== null;
+  currentScript = text;
+
+  if( isNewLine(text) ) {
+    if( sOn && isundef(scriptInfo.end) ) {
+      scriptInfo.end = time;
     }
+
+    incomingItem = { cTime, index: (sOn ? scriptInfo.index + 1 : 1), text: text, start: (time - adjTime) };
+
+    if( !sOn || scriptInfo.text === '' ) {
+      scriptInfo = incomingItem;
+    }
+  } else if( sOn ) {
+    scriptInfo.text += (' ' + text);
+    scriptInfo.end = null;
   }
 }
 
@@ -236,34 +260,25 @@ function batch() {
 
   if( !playing ) { return; }
 
-  var sLen = scriptInfo.length;
-
   /* 현재 스크립트 (curIdx) 완료 여부. */
-  if( curIdx < sLen && v.currentTime > scriptInfo[curIdx].end  ) {
+  if( scriptInfo && scriptInfo.end && v.currentTime >= scriptInfo.end  ) {
     repeatCount += 1;
     if( repeatCount > repeatLimit ) { /* 지정한 반복 회수 도달 */
       repeatCount = 1;
-      if( optGoing ) { /* 다음 스크립트 */
-        curIdx += 1;
-      } else { /* 일단 멈춤 */
-        v.pause();
-        playing = false;
-        setHTML('vrepeater-button-play', getIconHtml('play'));
-      }
+      /* console.log('move to next', JSON.stringify(scriptInfo), incomingItem); */
+      scriptInfo = incomingItem;
+      incomingItem = null;
     } else {
-      /* 현재 스크립트 반복 */
-      jumpTo(curIdx, false);
+      jumpTo(false); /* 현재 스크립트 반복 */
     }
     setHTML(boxKey + '-counter', '' + repeatCount);
   }
 
-  setHTML(boxKey + '-line2', 'Script: ' + (sLen === 0 ? '-' : (curIdx + 1) + ' / ' + Math.max(curIdx + 1, sLen)) );
-
-  if( repeatCount === 1) {
+  if( scriptInfo === null || repeatCount === 1) {
     s = getScriptBox();
     if( s ) {
-      if( sLen === 0 || v.currentTime > scriptInfo[sLen - 1].start ) {
-        pushScript(s.innerText, v.currentTime);
+      if( scriptInfo === null || v.currentTime > scriptInfo.start ) {
+        pushScript(s.innerText.trim(), v.currentTime);
       }
       adjustHiderPos(s);
     } else {
@@ -276,7 +291,7 @@ function main() {
   var mainBox = _$('#' + boxKey);
 
   if( isundef(mainBox) ) {
-    console.log('create main box for video-repeater');
+    console.log('create control box for video-repeater');
 
     mainBox = _g('div', boxKey);
     mainBox.style = 'position: fixed; z-index: 9999; top: 0px; right:0px; padding: 2px 4px;'
@@ -313,17 +328,18 @@ function main() {
 
     line1.appendChild(countSelector);
 
-    ['play', 'prev', 'next', 'show', 'step', 'close'].map(k => {
+    ['play', 'prev', 'next', 'show', 'close'].map(k => {
       line1.appendChild( createButton(k) );
       return k;
     });
 
-    var line2 = _g('div', boxKey + '-line2');
+    mainBox.appendChild(line1);
+
+    /* var line2 = _g('div', boxKey + '-line2');
     line2.style = 'height: 36px; padding: 0 4px;' + styleCenter;
     line2.innerHTML = 'line #2';
-
-    mainBox.appendChild(line1);
-    mainBox.appendChild(line2);
+    
+    mainBox.appendChild(line2); */
 
     document.body.appendChild(mainBox);
   } else {

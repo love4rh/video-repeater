@@ -1,5 +1,7 @@
 javascript: (function () {
 
+var alwaysNew = false; /* true: 바뀐 자막은 항상 새로운 자막으로 간주 */
+var host = 'https://gx.tool4.us/pushText'; /* http://127.0.0.1:9090/pushText       https://gx.tool4.us/pushText */
 var domMap = {}; /* 생성한 DOM 객체 맵. 성능 개선을 위한 멤버임 */
 
 function isundef(o) { return o === null || typeof o === 'undefined'; }
@@ -32,7 +34,8 @@ var movieID = getMovieID();
 
 var playing = v && !v.paused; /* Playing 여부 */
 
-var scriptInfo = []; /* 추출 중인 스크립트 저장 멤버. start(in ms), end, script */
+var scriptIdx = 0;
+var scriptInfo = null; /* 추출 중인 스크립트 저장 멤버. start(in ms), end, script */
 var checker = null; /* 배치 잡을 위한 Timer ID */
 var currentScript = ''; /* 스크립트 변경 여부 확인을 위한 최신 값 유지 멤버 */
 
@@ -114,46 +117,52 @@ function getMovieID() {
 }
 
 function isNewLine(text) {
-  return /[A-Z]/.test( text[0] ) || text[0] === '"' || text[0] === "'" || text[0] === '♪';
+  return alwaysNew || /[A-Z]/.test( text[0] ) || text[0] === '"' || text[0] === "'" || text[0] === '♪' || text[0] === '-';
 }
 
 /* si: script, start, end */
-function sendScript(idx, si) {
-  const host = 'https://gx.tool4.us/pushScript'; /* http://127.0.0.1:9090/pushText */
-  const xhr = new window.XMLHttpRequest();
-
-  xhr.onload = function () {
-    if ( xhr.status === 200 || xhr.status === 201 ) {
-      /* success: xhr.responseText */
-    } else {
-      /* error: xhr.responseText, xhr.status*/
-    }
-
-    if ( xhr.readyState === 4 ) {
-      /* complete(); */
-    }
-  };
-
-  xhr.withCredentials = false;
-  xhr.open('POST', host, true);
-
-  xhr.timeout = 24000;
+var keepData = null;
+function sendScript(si) {
+  if( isundef(si.end) ) {
+    return;
+  }
 
   var data = {
-    index: idx,
     movieID,
+    index: si.index,
     start: si.start,
     end: si.end,
-    text: si.script
+    text: si.text
   };
 
-  xhr.setRequestHeader('Content-type', 'application/json');
-  xhr.send(JSON.stringify(data));
+  if( keepData !== null ) {
+    const xhr = new window.XMLHttpRequest();
+
+    xhr.onload = function () {
+      if ( xhr.status === 200 || xhr.status === 201 ) {
+        /* success: xhr.responseText */
+      } else {
+        /* error: xhr.responseText, xhr.status*/
+      }
+
+      if ( xhr.readyState === 4 ) { /* complete(); */ }
+    };
+
+    xhr.withCredentials = false;
+    xhr.open('POST', host, true);
+
+    xhr.timeout = 12000;
+
+    if( keepData !== null ) {
+      xhr.setRequestHeader('Content-type', 'application/json');
+      xhr.send(JSON.stringify(keepData));
+    }
+  }
+
+  keepData = data;
 }
 
 function pushScript(text, time) {
-  const ll = scriptInfo.length;
-
   if( text !== null ) {
     if( text.startsWith('\n') ) {
       text = text.substring(1);
@@ -166,23 +175,24 @@ function pushScript(text, time) {
     }
   }
 
-  if( text === null && ll > 0 ) {
-    if( isundef(scriptInfo[ll - 1].end) ) {
-      scriptInfo[ll - 1].end = time;
-      sendScript(ll, scriptInfo[ll - 1]);
+  if( text === null && scriptInfo !== null ) {
+    if( isundef(scriptInfo.end) ) {
+      scriptInfo.end = time;
+      sendScript(scriptInfo);
     }
   } else if( !isundef(text) && currentScript !== text ) {
     currentScript = text;
     if( isNewLine(text) ) {
       time -= adjTime;
-      if( ll > 0 && isundef(scriptInfo[ll - 1].end) ) {
-        scriptInfo[ll - 1].end = time;
-        sendScript(ll, scriptInfo[ll - 1]);
+      if( scriptInfo !== null && isundef(scriptInfo.end) ) {
+        scriptInfo.end = time;
+        sendScript(scriptInfo);
       }
-      scriptInfo.push({ script:text, start:time });
-    } else if( ll > 0 ) {
-      scriptInfo[ll - 1].script += (' ' + text);
-      sendScript(ll, scriptInfo[ll - 1]);
+      scriptIdx += 1;
+      scriptInfo = { index: scriptIdx, text: text, start: time };
+    } else if( scriptInfo !== null ) {
+      scriptInfo.text += (' ' + text);
+      scriptInfo.end = null;
     }
   }
 }
@@ -197,11 +207,9 @@ function batch() {
 
   if( !playing ) { return; }
 
-  var sLen = scriptInfo.length;
-
   s = getScriptBox();
   if( s ) {
-    if( sLen === 0 || v.currentTime > scriptInfo[sLen - 1].start ) {
+    if( scriptInfo === null || v.currentTime > scriptInfo.start ) {
       pushScript(s.innerText.trim(), v.currentTime);
     }
   } else {
