@@ -34,9 +34,8 @@ var v = getVideoBox();
 var b10Button = _$(".rwd-10sec-icon");
 var clkEvent = new MouseEvent('click', { view: window, bubbles: true, cancelable: true });
 var vUrl = window.location.href;
-var isOK = true; /* vUrl.indexOf("disneyplus.com") >= 0 && !isundef(v); */
+var isOK = vUrl.indexOf("disneyplus.com") >= 0 && !isundef(v);
 
-var curIdx = 0; /* 현재 재생 중인 자막 번호 */
 var repeatCount = 1; /* 반복 회수 */
 var repeatLimit = 3; /* 최대 반복 회수. repeatOptions에 정의된 값 중 하나 선택 */
 var hidingBox = null; /* 자막 가리게 */
@@ -72,17 +71,29 @@ function jumpTo(reset) {
   /* 시간차가 많은 경우 임의로 currentTime을 변경하면 stalled될 수 있어 10초 뒤로 버튼을 이용함 */
   if( v.currentTime - sTime < 1.5 ) { /* 적정한 수치는 고려 필요 */
     b10Button.dispatchEvent(clkEvent);
-    setTimeout(() => { v.currentTime = sTime; holding = false; v.play(); }, 1200);
+    setTimeout(() => { v.currentTime = sTime - adjTime; holding = false; v.play(); }, 1200);
   } else {
-    setTimeout(() => { v.currentTime = sTime; }, 200);
-    setTimeout(() => { holding = false; v.play(); }, 400);
+    setTimeout(() => {
+      v.currentTime = sTime - adjTime;
+      setTimeout(() => { holding = false; v.play(); }, 200)
+    }, 200);
   }  
 }
 
-function plyaTo(offset) {
+function playTo(offset) {
   if( v ) {
-    v.currentTime += offset;
+    repeatCount = 1;
     scriptInfo = null;
+    incomingItem = null;
+
+    if( offset < 0 ) {
+      holding = true;
+      var sTime = v.currentTime;
+      b10Button.dispatchEvent(clkEvent);
+      setTimeout(() => { v.currentTime = sTime + offset; holding = false; v.play(); }, 1200);
+    } else {
+      v.currentTime += offset;
+    }
   }
 }
 
@@ -137,9 +148,9 @@ function handleClick(type) {
       console.log('script', scriptInfo);
     };
   } else if( 'prev' === type ) {
-    return (ev) => { plyaTo(-5); };
+    return (ev) => { playTo(-5); };
   } else if( 'next' === type ) {
-    return (ev) => { plyaTo(5); };
+    return (ev) => { playTo(5); };
   } else {
     return function (ev) {
       console.log('handleClick:', type, ev);
@@ -260,7 +271,6 @@ function batch() {
 
   if( !playing ) { return; }
 
-  /* 현재 스크립트 (curIdx) 완료 여부. */
   if( scriptInfo && scriptInfo.end && v.currentTime >= scriptInfo.end  ) {
     repeatCount += 1;
     if( repeatCount > repeatLimit ) { /* 지정한 반복 회수 도달 */
@@ -274,13 +284,14 @@ function batch() {
     setHTML(boxKey + '-counter', '' + repeatCount);
   }
 
+  s = getScriptBox();
+  if( s ) { adjustHiderPos(s); }
+
   if( scriptInfo === null || repeatCount === 1) {
-    s = getScriptBox();
     if( s ) {
       if( scriptInfo === null || v.currentTime > scriptInfo.start ) {
         pushScript(s.innerText.trim(), v.currentTime);
       }
-      adjustHiderPos(s);
     } else {
       pushScript(null, v.currentTime);
     }
