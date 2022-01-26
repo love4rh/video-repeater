@@ -67,15 +67,16 @@ function jumpTo(reset) {
   v.pause();
 
   var sTime = scriptInfo.start;
+  var sIdx = scriptInfo.index;
 
   /* 시간차가 많은 경우 임의로 currentTime을 변경하면 stalled될 수 있어 10초 뒤로 버튼을 이용함 */
   if( v.currentTime - sTime < 1.5 ) { /* 적정한 수치는 고려 필요 */
     b10Button.dispatchEvent(clkEvent);
-    setTimeout(() => { v.currentTime = sTime - adjTime; holding = false; v.play(); }, 1200);
+    setTimeout(() => { v.currentTime = sTime - adjTime; v.play(); holding = false; }, 1200);
   } else {
     setTimeout(() => {
       v.currentTime = sTime - adjTime;
-      setTimeout(() => { holding = false; v.play(); }, 200)
+      setTimeout(() => { v.play(); holding = false; console.log('jumpTo', sIdx); }, 200)
     }, 200);
   }  
 }
